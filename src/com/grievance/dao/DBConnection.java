@@ -6,15 +6,6 @@ import java.sql.SQLException;
 
 public class DBConnection {
 
-    private static final String URL =
-            "jdbc:mysql://localhost:3306/smart_grievance";
-
-    private static final String USER =
-            "root";
-
-    private static final String PASSWORD =
-            "";
-
     public static Connection getConnection() throws SQLException {
 
         try {
@@ -26,10 +17,24 @@ public class DBConnection {
             );
         }
 
+        String host = getSetting("DB_HOST", "localhost");
+        String port = getSetting("DB_PORT", "3306");
+        String database = getSetting("DB_NAME", "smart_grievance");
+        String user = getSetting("DB_USER", "root");
+        String password = getSetting("DB_PASSWORD", "");
+        String url = "jdbc:mysql://" + host + ":" + port + "/" + database;
+
         return DriverManager.getConnection(
-                URL,
-                USER,
-                PASSWORD
+                url,
+                user,
+                password
         );
+    }
+
+    private static String getSetting(String name, String defaultValue) {
+        String value = System.getenv(name);
+        return value == null || value.trim().isEmpty()
+                ? defaultValue
+                : value.trim();
     }
 }

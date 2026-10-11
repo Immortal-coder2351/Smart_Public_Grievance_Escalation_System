@@ -174,16 +174,21 @@ public class ComplaintServlet extends HttpServlet {
         String fileName =
                 java.util.UUID.randomUUID() + extension;
 
-        String uploadPath =
-                getServletContext().getRealPath("/uploads");
-
-        if (uploadPath == null) {
-            throw new IOException(
-                    "Upload directory is not available.");
+        String configuredUploadPath = System.getenv("UPLOAD_DIR");
+        java.nio.file.Path uploadDirectory;
+        if (configuredUploadPath == null ||
+                configuredUploadPath.trim().isEmpty()) {
+            String uploadPath =
+                    getServletContext().getRealPath("/uploads");
+            if (uploadPath == null) {
+                throw new IOException(
+                        "Upload directory is not available.");
+            }
+            uploadDirectory = java.nio.file.Paths.get(uploadPath);
+        } else {
+            uploadDirectory =
+                    java.nio.file.Paths.get(configuredUploadPath.trim());
         }
-
-        java.nio.file.Path uploadDirectory =
-                java.nio.file.Paths.get(uploadPath);
 
         java.nio.file.Files.createDirectories(uploadDirectory);
 

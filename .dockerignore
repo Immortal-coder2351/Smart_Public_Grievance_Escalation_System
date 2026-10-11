@@ -1,0 +1,13 @@
+.git
+.gitignore
+.dockerignore
+Dockerfile
+README.md
+LICENSE
+WEB-INF/classes/
+WEB-INF/lib/*.jar
+*.class
+*.war
+*.log
+uploads/*
+!uploads/.gitkeep

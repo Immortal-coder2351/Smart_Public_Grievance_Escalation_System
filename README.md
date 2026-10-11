@@ -27,7 +27,37 @@ A Java Servlet/JSP and MySQL web application for reporting public-service issues
 2. Download the MySQL Connector/J JAR from the [official MySQL download page](https://dev.mysql.com/downloads/connector/j/) and place it in `WEB-INF/lib/`.
 3. Create and initialize the database using [`database/grievance.sql`](database/grievance.sql). Run it against a new database; it creates the application tables and initial department rows.
 4. If upgrading a database created before complaint priority was added, apply [`database/add_priority.sql`](database/add_priority.sql) instead of re-running the full schema script.
-5. Update the local database URL, username, and password in `src/com/grievance/dao/DBConnection.java` before starting the app. Do not commit production credentials.
+5. Set the database connection environment variables for your environment: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. The defaults support the existing local development setup. Do not commit production credentials.
+
+## Deploy with Docker
+
+The included `Dockerfile` builds the application from this repository root, compiles the Java sources, downloads MySQL Connector/J during the image build, and runs it on port `10000`. The image does not include uploaded complaint photos, compiled classes from your workstation, or local JAR files.
+
+1. Initialize a MySQL or MariaDB database using `database/grievance.sql`, and ensure the database is reachable from the container.
+2. Build the image from the repository root:
+
+   ```sh
+   docker build -t smart-grievance .
+   ```
+
+3. Run it with the database connection settings for your environment:
+
+   ```sh
+   docker run --rm -p 10000:10000 \
+     -e DB_HOST=host.docker.internal \
+     -e DB_PORT=3306 \
+     -e DB_NAME=smart_grievance \
+     -e DB_USER=your_database_user \
+     -e DB_PASSWORD=your_database_password \
+     -v grievance-uploads:/var/data/uploads \
+     smart-grievance
+   ```
+
+   Replace the example database host and credentials with values for your database. Keep secrets in your deployment provider's environment settings, not in source control. On Linux, `host.docker.internal` may need to be configured explicitly when the database runs on the Docker host.
+
+4. Open `http://localhost:10000/`. Configure a persistent volume at `/var/data/uploads` on your hosting provider so uploaded complaint images survive container replacement.
+
+The entrypoint uses the hosting provider's `PORT` value when supplied (default `10000`). The image expects the application to connect to an external MySQL-compatible database; it does not bundle or start a database server.
 
 ## Deploy on Tomcat
 
@@ -56,7 +86,9 @@ A Java Servlet/JSP and MySQL web application for reporting public-service issues
 .
 ├── css/                  # Shared and homepage styles
 ├── database/             # Initial schema and migration scripts
+├── Dockerfile            # Container image build
 ├── js/                   # Client-side form behavior
+├── render-entrypoint.sh  # Container startup and port configuration
 ├── src/                  # Servlets, DAOs, models, and escalation scheduler
 ├── uploads/              # Runtime user uploads (not committed)
 ├── WEB-INF/
