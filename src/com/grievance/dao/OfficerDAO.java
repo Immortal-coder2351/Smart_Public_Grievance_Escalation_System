@@ -1,6 +1,8 @@
 package com.grievance.dao;
+import com.grievance.util.PasswordUtil;
 
 import com.grievance.model.User;
+import com.grievance.util.PasswordValidator;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -14,6 +16,10 @@ public class OfficerDAO {
     // Add a new officer
     public boolean addOfficer(User officer) {
 
+        if (officer == null || !PasswordValidator.isStrong(officer.getPassword())) {
+            return false;
+        }
+
         String sql = "INSERT INTO users " +
                      "(name, email, phone, username, password, role, officer_level, department_id) " +
                      "VALUES (?, ?, ?, ?, ?, 'OFFICER', ?, ?)";
@@ -26,7 +32,7 @@ public class OfficerDAO {
             statement.setString(2, officer.getEmail());
             statement.setString(3, officer.getPhone());
             statement.setString(4, officer.getUsername());
-            statement.setString(5, officer.getPassword());
+            statement.setString(5, PasswordUtil.hashPassword(officer.getPassword()));
 
             if (officer.getOfficerLevel() != null) {
                 statement.setInt(6, officer.getOfficerLevel());
