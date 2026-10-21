@@ -73,7 +73,7 @@ The entrypoint uses the hosting provider's `PORT` value when supplied (default `
    ```powershell
    $tomcat = "C:\Program Files\Apache Software Foundation\Tomcat 11.0"
    $sources = Get-ChildItem src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-   javac -cp "$tomcat\lib\servlet-api.jar" -d WEB-INF\classes $sources
+   javac --release 17 -cp "$tomcat\lib\servlet-api.jar" -d WEB-INF\classes $sources
    ```
 
 4. Ensure the MySQL Connector/J JAR is present in `WEB-INF/lib/`.

@@ -1,7 +1,9 @@
 package com.grievance.controller;
 
 import com.grievance.dao.OfficerDAO;
+import com.grievance.dao.UserDAO;
 import com.grievance.model.User;
+import com.grievance.util.PasswordValidator;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -16,34 +18,39 @@ import java.io.IOException;
 public class AddOfficerServlet extends HttpServlet {
 
     private OfficerDAO officerDAO;
+    private UserDAO userDAO;
 
     @Override
     public void init() {
         officerDAO = new OfficerDAO();
+        userDAO = new UserDAO();
     }
 
     @Override
-    protected void doPost(HttpServletRequest request,
-                          HttpServletResponse response)
+    protected void doPost(
+            HttpServletRequest request,
+            HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String contextPath = request.getContextPath();
         HttpSession session = request.getSession(false);
 
-        // Check whether user is logged in
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect("login.jsp");
+        if (session == null || !(session.getAttribute("user") instanceof User)) {
+            response.sendRedirect(contextPath + "/login.jsp");
             return;
         }
 
         User loggedInUser = (User) session.getAttribute("user");
 
-        // Only ADMIN can add officers
         if (!"ADMIN".equals(loggedInUser.getRole())) {
-            response.sendRedirect("login.jsp");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
-        // Get form values
         String name = request.getParameter("name");
         String email = request.getParameter("email");
         String phone = request.getParameter("phone");
@@ -52,67 +59,56 @@ public class AddOfficerServlet extends HttpServlet {
         String officerLevelText = request.getParameter("officerLevel");
         String departmentIdText = request.getParameter("departmentId");
 
-        // Basic validation
-        if (name == null || name.trim().isEmpty() ||
-            email == null || email.trim().isEmpty() ||
-            username == null || username.trim().isEmpty() ||
-            password == null || password.trim().isEmpty() ||
-            officerLevelText == null || officerLevelText.trim().isEmpty() ||
-            departmentIdText == null || departmentIdText.trim().isEmpty()) {
+        String redirectUrl = contextPath + "/adminOfficers.jsp";
 
-            response.sendRedirect("adminOfficers.jsp?error=missing");
+        if (name == null || name.trim().isEmpty()
+                || email == null || email.trim().isEmpty()
+                || phone == null || phone.trim().isEmpty()
+                || username == null || username.trim().isEmpty()
+                || password == null || password.trim().isEmpty()
+                || officerLevelText == null || officerLevelText.trim().isEmpty()
+                || departmentIdText == null || departmentIdText.trim().isEmpty()) {
+
+            response.sendRedirect(redirectUrl + "?error=missing");
+            return;
+        }
+
+        if (!PasswordValidator.isStrong(password)) {
+            response.sendRedirect(redirectUrl + "?error=weakPassword");
             return;
         }
 
         try {
+            int officerLevel = Integer.parseInt(officerLevelText.trim());
+            int departmentId = Integer.parseInt(departmentIdText.trim());
 
-            int officerLevel = Integer.parseInt(officerLevelText);
-            int departmentId = Integer.parseInt(departmentIdText);
-
-            // Check whether username already exists
-            com.grievance.dao.UserDAO userDAO =
-                    new com.grievance.dao.UserDAO();
-
-            if (userDAO.usernameExists(username)) {
-                response.sendRedirect("adminOfficers.jsp?error=username");
+            if (officerLevel < 1 || departmentId < 1) {
+                response.sendRedirect(redirectUrl + "?error=invalid");
                 return;
             }
 
-            // Check whether email already exists
-            if (userDAO.emailExists(email)) {
-                response.sendRedirect("adminOfficers.jsp?error=email");
-                return;
-            }
-
-            // Create officer object
             User officer = new User();
-
-            officer.setName(name);
-            officer.setEmail(email);
-            officer.setPhone(phone);
-            officer.setUsername(username);
+            officer.setName(name.trim());
+            officer.setEmail(email.trim());
+            officer.setPhone(phone.trim());
+            officer.setUsername(username.trim());
             officer.setPassword(password);
             officer.setRole("OFFICER");
             officer.setOfficerLevel(officerLevel);
             officer.setDepartmentId(departmentId);
 
-            // Save officer
-            boolean success = officerDAO.addOfficer(officer);
+            boolean added = officerDAO.addOfficer(officer);
 
-            if (success) {
-                response.sendRedirect("adminOfficers.jsp?success=officerAdded");
+            if (added) {
+                response.sendRedirect(redirectUrl + "?success=officerAdded");
             } else {
-                response.sendRedirect("adminOfficers.jsp?error=failed");
+                response.sendRedirect(redirectUrl + "?error=failed");
             }
 
         } catch (NumberFormatException e) {
-
-            response.sendRedirect("adminOfficers.jsp?error=invalidData");
-
+            response.sendRedirect(redirectUrl + "?error=invalid");
         } catch (Exception e) {
-
-            e.printStackTrace();
-            response.sendRedirect("adminOfficers.jsp?error=server");
+            throw new ServletException("Unable to add officer.", e);
         }
     }
 }

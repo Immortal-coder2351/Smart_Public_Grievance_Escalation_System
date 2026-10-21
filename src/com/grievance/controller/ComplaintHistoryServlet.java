@@ -24,81 +24,100 @@ public class ComplaintHistoryServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest request,
-                          HttpServletResponse response)
+    protected void doGet(
+            HttpServletRequest request,
+            HttpServletResponse response)
             throws ServletException, IOException {
+
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String loginPage = request.getContextPath() + "/login.jsp";
 
         HttpSession session = request.getSession(false);
 
-        if (session == null ||
-            session.getAttribute("user") == null) {
-
-            response.sendRedirect("login.jsp");
+        if (session == null) {
+            response.sendRedirect(loginPage);
             return;
         }
 
-        User user = (User) session.getAttribute("user");
+        Object sessionUser = session.getAttribute("user");
 
-        String complaintIdText =
-                request.getParameter("complaintId");
+        if (!(sessionUser instanceof User)) {
+            response.sendRedirect(loginPage);
+            return;
+        }
 
-        if (complaintIdText == null ||
-            complaintIdText.trim().isEmpty()) {
+        User user = (User) sessionUser;
+        String role = user.getRole();
 
-            response.sendRedirect("login.jsp");
+        if (!"ADMIN".equals(role)
+                && !"CITIZEN".equals(role)
+                && !"OFFICER".equals(role)) {
+            response.sendRedirect(loginPage);
+            return;
+        }
+
+        String complaintIdText = request.getParameter("complaintId");
+
+        if (complaintIdText == null || complaintIdText.trim().isEmpty()) {
+            response.sendRedirect(request.getContextPath() + "/" + getDashboardPath(role));
             return;
         }
 
         try {
+            int complaintId = Integer.parseInt(complaintIdText.trim());
 
-            int complaintId =
-                    Integer.parseInt(complaintIdText);
+            if (complaintId <= 0) {
+                response.sendRedirect(request.getContextPath() + "/" + getDashboardPath(role));
+                return;
+            }
 
-            boolean authorized = false;
+            boolean authorized;
 
-            if ("ADMIN".equals(user.getRole())) {
-
+            if ("ADMIN".equals(role)) {
                 authorized = true;
-
-            } else if ("CITIZEN".equals(user.getRole())) {
-
-                authorized =
-                        complaintHistoryDAO.citizenOwnsComplaint(
-                                complaintId,
-                                user.getUserId());
-
-            } else if ("OFFICER".equals(user.getRole())) {
-
-                authorized =
-                        complaintHistoryDAO.officerHasComplaint(
-                                complaintId,
-                                user.getUserId());
+            } else if ("CITIZEN".equals(role)) {
+                authorized = complaintHistoryDAO.citizenOwnsComplaint(
+                        complaintId,
+                        user.getUserId());
+            } else {
+                authorized = complaintHistoryDAO.officerHasComplaint(
+                        complaintId,
+                        user.getUserId());
             }
 
             if (!authorized) {
-                response.sendRedirect("login.jsp");
+                response.sendError(HttpServletResponse.SC_FORBIDDEN);
                 return;
             }
 
             List<String[]> history =
-                    complaintHistoryDAO.getComplaintHistory(
-                            complaintId);
+                    complaintHistoryDAO.getComplaintHistory(complaintId);
 
             request.setAttribute("history", history);
             request.setAttribute("complaintId", complaintId);
 
-            request.getRequestDispatcher(
-                    "complaintHistory.jsp")
-                   .forward(request, response);
+            request.getRequestDispatcher("/complaintHistory.jsp")
+                    .forward(request, response);
 
         } catch (NumberFormatException e) {
-
-            response.sendRedirect("login.jsp");
-
+            response.sendRedirect(request.getContextPath() + "/" + getDashboardPath(role));
         } catch (Exception e) {
-
-            e.printStackTrace();
-            response.sendRedirect("login.jsp");
+            throw new ServletException("Unable to retrieve complaint history.", e);
         }
+    }
+
+    private String getDashboardPath(String role) {
+        if ("CITIZEN".equals(role)) {
+            return "citizenDashboard";
+        }
+
+        if ("OFFICER".equals(role)) {
+            return "officerDashboard.jsp";
+        }
+
+        return "adminDashboard.jsp";
     }
 }

@@ -25,30 +25,41 @@ public class OfficerComplaintsServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest request,
-                          HttpServletResponse response)
+    protected void doGet(
+            HttpServletRequest request,
+            HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String contextPath = request.getContextPath();
         HttpSession session = request.getSession(false);
 
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect("login.jsp");
+        if (session == null || !(session.getAttribute("user") instanceof User)) {
+            response.sendRedirect(contextPath + "/login.jsp");
             return;
         }
 
         User user = (User) session.getAttribute("user");
 
         if (!"OFFICER".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
-        List<Complaint> complaints =
-                officerComplaintDAO.getAssignedComplaints(user.getUserId());
+        try {
+            List<Complaint> complaints =
+                    officerComplaintDAO.getAssignedComplaints(user.getUserId());
 
-        request.setAttribute("complaints", complaints);
+            request.setAttribute("complaints", complaints);
 
-        request.getRequestDispatcher("officerComplaints.jsp")
-               .forward(request, response);
+            request.getRequestDispatcher("/officerComplaints.jsp")
+                    .forward(request, response);
+
+        } catch (Exception e) {
+            throw new ServletException("Unable to load assigned complaints.", e);
+        }
     }
 }

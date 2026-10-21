@@ -1,3 +1,4 @@
+
 package com.grievance.dao;
 
 import java.sql.Connection;
@@ -12,8 +13,8 @@ public class DBConnection {
             Class.forName("com.mysql.cj.jdbc.Driver");
         } catch (ClassNotFoundException e) {
             throw new SQLException(
-                    "MySQL JDBC Driver not found.",
-                    e
+                "MySQL JDBC Driver not found.",
+                e
             );
         }
 
@@ -22,19 +23,38 @@ public class DBConnection {
         String database = getSetting("DB_NAME", "smart_grievance");
         String user = getSetting("DB_USER", "root");
         String password = getSetting("DB_PASSWORD", "");
-        String url = "jdbc:mysql://" + host + ":" + port + "/" + database;
+
+        String sslMode = getSetting(
+            "DB_SSL_MODE",
+            host.equalsIgnoreCase("localhost")
+                ? "DISABLED"
+                : "REQUIRED"
+        );
+
+        String url = "jdbc:mysql://"
+                + host + ":"
+                + port + "/"
+                + database
+                + "?sslMode=" + sslMode;
 
         return DriverManager.getConnection(
-                url,
-                user,
-                password
+            url,
+            user,
+            password
         );
     }
 
-    private static String getSetting(String name, String defaultValue) {
+    private static String getSetting(
+            String name,
+            String defaultValue) {
+
         String value = System.getenv(name);
-        return value == null || value.trim().isEmpty()
-                ? defaultValue
-                : value.trim();
+
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+
+        return value.trim();
     }
 }
+

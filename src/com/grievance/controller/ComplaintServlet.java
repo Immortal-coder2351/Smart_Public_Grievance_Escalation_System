@@ -14,6 +14,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Locale;
+import java.util.UUID;
 
 @WebServlet("/complaint")
 @MultipartConfig(
@@ -36,17 +43,22 @@ public class ComplaintServlet extends HttpServlet {
             HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String contextPath = request.getContextPath();
         HttpSession session = request.getSession(false);
 
-        if (session == null) {
-            response.sendRedirect("login.jsp");
+        if (session == null || !(session.getAttribute("user") instanceof User)) {
+            response.sendRedirect(contextPath + "/login.jsp");
             return;
         }
 
         User user = (User) session.getAttribute("user");
 
-        if (user == null || !"CITIZEN".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+        if (!"CITIZEN".equals(user.getRole())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
@@ -56,52 +68,71 @@ public class ComplaintServlet extends HttpServlet {
         String priority = request.getParameter("priority");
         String description = request.getParameter("description");
         String location = request.getParameter("location");
-        String image = null;
 
-        if (title == null || title.trim().isEmpty() ||
-            departmentId == null || departmentId.trim().isEmpty() ||
-            category == null || category.trim().isEmpty() ||
-            priority == null || priority.trim().isEmpty() ||
-            description == null || description.trim().isEmpty() ||
-            location == null || location.trim().isEmpty()) {
-
-            response.getWriter().println(
+        if (isBlank(title) || isBlank(departmentId) ||
+                isBlank(category) || isBlank(priority) ||
+                isBlank(description) || isBlank(location)) {
+            response.sendError(
+                    HttpServletResponse.SC_BAD_REQUEST,
                     "Please complete all required complaint fields.");
             return;
         }
 
-        if (!"HIGH".equals(priority) &&
-            !"MEDIUM".equals(priority) &&
-            !"LOW".equals(priority)) {
+        priority = priority.trim().toUpperCase(Locale.ROOT);
 
-            response.getWriter().println(
+        if (!"HIGH".equals(priority) &&
+                !"MEDIUM".equals(priority) &&
+                !"LOW".equals(priority)) {
+            response.sendError(
+                    HttpServletResponse.SC_BAD_REQUEST,
                     "Invalid priority value.");
             return;
         }
 
         int departmentIdValue;
+
         try {
-            departmentIdValue = Integer.parseInt(departmentId);
+            departmentIdValue = Integer.parseInt(departmentId.trim());
+
+            if (departmentIdValue <= 0) {
+                throw new NumberFormatException();
+            }
         } catch (NumberFormatException e) {
-            response.getWriter().println(
+            response.sendError(
+                    HttpServletResponse.SC_BAD_REQUEST,
                     "Invalid department.");
             return;
         }
 
+        Part imagePart;
+
         try {
             Part browserImage = request.getPart("browserImage");
             Part cameraImage = request.getPart("cameraImage");
-            Part imagePart = chooseImagePart(browserImage, cameraImage);
+
+            imagePart = chooseImagePart(browserImage, cameraImage);
 
             if (imagePart == null || imagePart.getSize() == 0) {
-                response.getWriter().println(
+                response.sendError(
+                        HttpServletResponse.SC_BAD_REQUEST,
                         "Please attach a complaint image before submitting.");
                 return;
             }
+        } catch (IllegalStateException e) {
+            response.sendError(
+                    HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE,
+                    "The uploaded request is too large.");
+            return;
+        }
 
-            image = saveUploadedImage(imagePart, request);
+        String imagePath;
+
+        try {
+            imagePath = saveUploadedImage(imagePart);
         } catch (IllegalArgumentException e) {
-            response.getWriter().println(e.getMessage());
+            response.sendError(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage());
             return;
         }
 
@@ -109,26 +140,32 @@ public class ComplaintServlet extends HttpServlet {
 
         complaint.setCitizenId(user.getUserId());
         complaint.setDepartmentId(departmentIdValue);
-        complaint.setTitle(title);
-        complaint.setCategory(category);
+        complaint.setTitle(title.trim());
+        complaint.setCategory(category.trim());
         complaint.setPriority(priority);
-        complaint.setDescription(description);
-        complaint.setLocation(location);
-        complaint.setImage(image);
+        complaint.setDescription(description.trim());
+        complaint.setLocation(location.trim());
+        complaint.setImage(imagePath);
 
-        boolean registered =
-                complaintDAO.registerComplaint(complaint);
+        try {
+            boolean registered = complaintDAO.registerComplaint(complaint);
 
-        if (registered) {
-
-            response.sendRedirect("complaintSuccess.jsp?complaintId=" + complaint.getComplaintId());
-
-        } else {
-
-            response.getWriter().println(
-                    "Complaint registration failed. Please try again."
-            );
+            if (registered) {
+                response.sendRedirect(
+                        contextPath + "/complaintSuccess.jsp?complaintId="
+                                + complaint.getComplaintId());
+            } else {
+                response.sendError(
+                        HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                        "Complaint registration failed. Please try again.");
+            }
+        } catch (Exception e) {
+            throw new ServletException("Unable to register complaint.", e);
         }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private Part chooseImagePart(Part browserImage, Part cameraImage) {
@@ -143,9 +180,7 @@ public class ComplaintServlet extends HttpServlet {
         return null;
     }
 
-    private String saveUploadedImage(Part imagePart, HttpServletRequest request)
-            throws IOException {
-
+    private String saveUploadedImage(Part imagePart) throws IOException {
         if (imagePart.getSize() > 5 * 1024 * 1024) {
             throw new IllegalArgumentException(
                     "Image size must be 5 MB or less.");
@@ -154,16 +189,17 @@ public class ComplaintServlet extends HttpServlet {
         String contentType = imagePart.getContentType();
 
         if (contentType == null ||
-                !contentType.toLowerCase().startsWith("image/")) {
+                !contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
             throw new IllegalArgumentException(
                     "Please upload a valid image file.");
         }
 
         String submittedFileName = imagePart.getSubmittedFileName();
+
         String extension = submittedFileName != null &&
                 submittedFileName.contains(".")
                 ? submittedFileName.substring(
-                        submittedFileName.lastIndexOf('.')).toLowerCase()
+                        submittedFileName.lastIndexOf('.')).toLowerCase(Locale.ROOT)
                 : "";
 
         if (!extension.matches("\\.(jpg|jpeg|png|gif|webp)")) {
@@ -171,40 +207,37 @@ public class ComplaintServlet extends HttpServlet {
                     "Please upload a JPG, JPEG, PNG, GIF or WEBP image.");
         }
 
-        String fileName =
-                java.util.UUID.randomUUID() + extension;
+        String fileName = UUID.randomUUID() + extension;
 
         String configuredUploadPath = System.getenv("UPLOAD_DIR");
-        java.nio.file.Path uploadDirectory;
+        Path uploadDirectory;
+
         if (configuredUploadPath == null ||
                 configuredUploadPath.trim().isEmpty()) {
-            String uploadPath =
-                    getServletContext().getRealPath("/uploads");
+            String uploadPath = getServletContext().getRealPath("/uploads");
+
             if (uploadPath == null) {
-                throw new IOException(
-                        "Upload directory is not available.");
+                throw new IOException("Upload directory is not available.");
             }
-            uploadDirectory = java.nio.file.Paths.get(uploadPath);
+
+            uploadDirectory = Paths.get(uploadPath);
         } else {
-            uploadDirectory =
-                    java.nio.file.Paths.get(configuredUploadPath.trim());
+            uploadDirectory = Paths.get(configuredUploadPath.trim());
         }
 
-        java.nio.file.Files.createDirectories(uploadDirectory);
+        Files.createDirectories(uploadDirectory);
 
-        java.nio.file.Path target =
-                uploadDirectory.resolve(fileName);
+        Path target = uploadDirectory.resolve(fileName).normalize();
 
-        try (java.io.InputStream input =
-                     imagePart.getInputStream()) {
+        if (!target.startsWith(uploadDirectory.toAbsolutePath().normalize())
+                && !target.startsWith(uploadDirectory.normalize())) {
+            throw new IOException("Invalid upload destination.");
+        }
 
-            java.nio.file.Files.copy(
-                    input,
-                    target,
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        try (InputStream input = imagePart.getInputStream()) {
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
         }
 
         return "uploads/" + fileName;
     }
-
 }

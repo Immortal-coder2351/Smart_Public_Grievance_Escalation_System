@@ -1,3 +1,4 @@
+
 package com.grievance.controller;
 
 import com.grievance.dao.AdminComplaintDAO;
@@ -26,20 +27,24 @@ public class AdminComplaintsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest request,
-                          HttpServletResponse response)
+                         HttpServletResponse response)
             throws ServletException, IOException {
+
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
 
         HttpSession session = request.getSession(false);
 
         if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect("login.jsp");
+            response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
 
         User user = (User) session.getAttribute("user");
 
         if (!"ADMIN".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+            response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
 
@@ -48,7 +53,7 @@ public class AdminComplaintsServlet extends HttpServlet {
 
         request.setAttribute("complaints", complaints);
 
-        request.getRequestDispatcher("adminComplaints.jsp")
+        request.getRequestDispatcher("/adminComplaints.jsp")
                .forward(request, response);
     }
 }

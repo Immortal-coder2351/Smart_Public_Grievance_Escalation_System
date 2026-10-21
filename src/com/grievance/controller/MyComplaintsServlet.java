@@ -30,29 +30,44 @@ public class MyComplaintsServlet extends HttpServlet {
             HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String loginPage = request.getContextPath() + "/login.jsp";
+
         HttpSession session = request.getSession(false);
 
         if (session == null) {
-            response.sendRedirect("login.jsp");
+            response.sendRedirect(loginPage);
             return;
         }
 
-        User user = (User) session.getAttribute("user");
+        Object sessionUser = session.getAttribute("user");
 
-        if (user == null || !"CITIZEN".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+        if (!(sessionUser instanceof User)) {
+            response.sendRedirect(loginPage);
             return;
         }
 
-        List<Complaint> complaints =
-                complaintDAO.getComplaintsByCitizen(
-                        user.getUserId()
-                );
+        User user = (User) sessionUser;
 
-        request.setAttribute("complaints", complaints);
+        if (!"CITIZEN".equals(user.getRole())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
+            return;
+        }
 
-        request.getRequestDispatcher(
-                "myComplaints.jsp"
-        ).forward(request, response);
+        try {
+            List<Complaint> complaints =
+                    complaintDAO.getComplaintsByCitizen(user.getUserId());
+
+            request.setAttribute("complaints", complaints);
+
+            request.getRequestDispatcher("/myComplaints.jsp")
+                    .forward(request, response);
+
+        } catch (Exception e) {
+            throw new ServletException("Unable to load your complaints.", e);
+        }
     }
 }

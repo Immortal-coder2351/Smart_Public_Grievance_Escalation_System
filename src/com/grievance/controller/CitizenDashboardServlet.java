@@ -1,3 +1,4 @@
+
 package com.grievance.controller;
 
 import com.grievance.dao.ComplaintDAO;
@@ -30,24 +31,30 @@ public class CitizenDashboardServlet extends HttpServlet {
             HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
         HttpSession session = request.getSession(false);
 
         if (session == null) {
-            response.sendRedirect("login.jsp");
+            response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
 
         User user = (User) session.getAttribute("user");
 
         if (user == null || !"CITIZEN".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+            response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
 
         List<Complaint> complaints =
                 complaintDAO.getComplaintsByCitizen(user.getUserId());
+
         request.setAttribute("complaints", complaints);
-        request.getRequestDispatcher("citizendashboard.jsp")
+
+        request.getRequestDispatcher("/citizendashboard.jsp")
                 .forward(request, response);
     }
 }

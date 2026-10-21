@@ -23,75 +23,63 @@ public class AdminAssignComplaintServlet extends HttpServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest request,
-                          HttpServletResponse response)
+    protected void doPost(
+            HttpServletRequest request,
+            HttpServletResponse response)
             throws ServletException, IOException {
 
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setDateHeader("Expires", 0);
+
+        String contextPath = request.getContextPath();
         HttpSession session = request.getSession(false);
 
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect("login.jsp");
+        if (session == null || !(session.getAttribute("user") instanceof User)) {
+            response.sendRedirect(contextPath + "/login.jsp");
             return;
         }
 
         User user = (User) session.getAttribute("user");
 
         if (!"ADMIN".equals(user.getRole())) {
-            response.sendRedirect("login.jsp");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
-        String complaintIdText =
-                request.getParameter("complaintId");
+        String complaintIdText = request.getParameter("complaintId");
+        String officerIdText = request.getParameter("officerId");
 
-        String officerIdText =
-                request.getParameter("officerId");
+        String redirectUrl = contextPath + "/adminComplaints";
 
-        if (complaintIdText == null ||
-            complaintIdText.trim().isEmpty() ||
-            officerIdText == null ||
-            officerIdText.trim().isEmpty()) {
-
-            response.sendRedirect(
-                    "adminComplaints?error=missing");
-
+        if (complaintIdText == null || complaintIdText.trim().isEmpty()
+                || officerIdText == null || officerIdText.trim().isEmpty()) {
+            response.sendRedirect(redirectUrl + "?error=missing");
             return;
         }
 
         try {
+            int complaintId = Integer.parseInt(complaintIdText.trim());
+            int officerId = Integer.parseInt(officerIdText.trim());
 
-            int complaintId =
-                    Integer.parseInt(complaintIdText);
+            if (complaintId <= 0 || officerId <= 0) {
+                response.sendRedirect(redirectUrl + "?error=invalid");
+                return;
+            }
 
-            int officerId =
-                    Integer.parseInt(officerIdText);
+            boolean assigned =
+                    adminAssignmentDAO.assignComplaint(complaintId, officerId);
 
-            boolean success =
-                    adminAssignmentDAO.assignComplaintToOfficer(
-                            complaintId,
-                            officerId);
-
-            if (success) {
-                response.sendRedirect(
-                        "adminComplaints?success=assigned");
-
+            if (assigned) {
+                response.sendRedirect(redirectUrl + "?success=assigned");
             } else {
-
-                response.sendRedirect(
-                        "adminComplaints?error=failed");
+                response.sendRedirect(redirectUrl + "?error=failed");
             }
 
         } catch (NumberFormatException e) {
-
-            response.sendRedirect(
-                    "adminComplaints?error=invalid");
-
+            response.sendRedirect(redirectUrl + "?error=invalid");
         } catch (Exception e) {
-
-            e.printStackTrace();
-
-            response.sendRedirect(
-                    "adminComplaints?error=server");
+            throw new ServletException("Unable to assign complaint.", e);
         }
     }
 }

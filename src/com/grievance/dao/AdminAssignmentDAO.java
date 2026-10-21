@@ -4,14 +4,14 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 
 public class AdminAssignmentDAO {
 
-    public boolean assignComplaintToOfficer(
-            int complaintId,
-            int officerId) {
+    public boolean assignComplaint(int complaintId, int officerId) {
+        return assignComplaintToOfficer(complaintId, officerId);
+    }
+
+    public boolean assignComplaintToOfficer(int complaintId, int officerId) {
 
         String clearEscalationsSql =
                 "UPDATE complaint_assignments " +
@@ -35,37 +35,44 @@ public class AdminAssignmentDAO {
         try (Connection connection = DBConnection.getConnection()) {
             connection.setAutoCommit(false);
 
-            try (PreparedStatement clearStatement =
-                         connection.prepareStatement(clearEscalationsSql);
-                 PreparedStatement assignmentStatement =
-                         connection.prepareStatement(assignmentSql);
-                 PreparedStatement complaintStatusStatement =
-                         connection.prepareStatement(complaintStatusSql)) {
+            try {
+                try (PreparedStatement clearStatement =
+                             connection.prepareStatement(clearEscalationsSql);
+                     PreparedStatement assignmentStatement =
+                             connection.prepareStatement(assignmentSql);
+                     PreparedStatement complaintStatusStatement =
+                             connection.prepareStatement(complaintStatusSql)) {
 
-                clearStatement.setInt(1, complaintId);
-                clearStatement.executeUpdate();
+                    clearStatement.setInt(1, complaintId);
+                    clearStatement.executeUpdate();
 
-                assignmentStatement.setInt(1, complaintId);
-                assignmentStatement.setInt(2, officerId);
-                assignmentStatement.setTimestamp(
-                        3, Timestamp.valueOf(assignedAt));
-                assignmentStatement.setTimestamp(
-                        4, Timestamp.valueOf(deadline));
+                    assignmentStatement.setInt(1, complaintId);
+                    assignmentStatement.setInt(2, officerId);
+                    assignmentStatement.setTimestamp(
+                            3, Timestamp.valueOf(assignedAt));
+                    assignmentStatement.setTimestamp(
+                            4, Timestamp.valueOf(deadline));
 
-                if (assignmentStatement.executeUpdate() == 0) {
-                    connection.rollback();
-                    return false;
+                    if (assignmentStatement.executeUpdate() == 0) {
+                        connection.rollback();
+                        return false;
+                    }
+
+                    complaintStatusStatement.setInt(1, complaintId);
+
+                    if (complaintStatusStatement.executeUpdate() == 0) {
+                        connection.rollback();
+                        return false;
+                    }
                 }
 
-                complaintStatusStatement.setInt(1, complaintId);
-                if (complaintStatusStatement.executeUpdate() == 0) {
-                    connection.rollback();
-                    return false;
-                }
+                connection.commit();
+                return true;
+
+            } catch (Exception e) {
+                connection.rollback();
+                throw e;
             }
-
-            connection.commit();
-            return true;
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -73,9 +80,7 @@ public class AdminAssignmentDAO {
         }
     }
 
-    public boolean updateComplaintStatus(
-            int complaintId,
-            String status) {
+    public boolean updateComplaintStatus(int complaintId, String status) {
 
         String sql =
                 "UPDATE complaints " +

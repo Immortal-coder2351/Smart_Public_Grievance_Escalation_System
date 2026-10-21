@@ -8,8 +8,8 @@ const validateRequiredFields = (form) => {
     const fields = form.querySelectorAll("[required]");
 
     for (const field of fields) {
-        if (!field.value.trim()) {
-            showMessage(`${field.name || "This field"} is required.`);
+        if (!String(field.value || "").trim()) {
+            showMessage(`${field.labels?.[0]?.textContent || field.name || "This field"} is required.`);
             field.focus();
             return false;
         }
@@ -35,35 +35,105 @@ const validatePasswordMatch = (passwordId, confirmPasswordId) => {
     return true;
 };
 
-const validateEmail = (email) => {
-    const emailPattern =
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isStrongPassword = (password) => {
+    return password.length >= 12 &&
+        /\p{Lu}/u.test(password) &&
+        /\p{Ll}/u.test(password) &&
+        /\d/u.test(password) &&
+        /[^\p{L}\p{N}\s]/u.test(password);
+};
 
+const validateEmail = (email) => {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailPattern.test(email.value.trim());
 };
 
 const validatePhone = (phone) => {
     const phonePattern = /^[0-9]{10,15}$/;
-
     return phonePattern.test(phone.value.trim());
 };
 
-document.addEventListener("DOMContentLoaded", () => {
+const initializePasswordStrength = () => {
+    const passwordFields = [
+        document.getElementById("password"),
+        document.getElementById("newPassword")
+    ].filter(Boolean);
 
+    passwordFields.forEach((passwordField) => {
+        let feedback = passwordField.parentElement.querySelector(
+            ".password-strength-feedback"
+        );
+
+        if (!feedback) {
+            feedback = document.createElement("small");
+            feedback.className = "password-strength-feedback";
+            feedback.setAttribute("aria-live", "polite");
+            passwordField.insertAdjacentElement("afterend", feedback);
+        }
+
+        const updateStrength = () => {
+            const password = passwordField.value;
+
+            if (!password) {
+                feedback.textContent =
+                    "Use 12+ characters with uppercase, lowercase, a number, and a special character.";
+                feedback.style.color = "";
+                return;
+            }
+
+            const checks = [
+                password.length >= 12,
+                /\p{Lu}/u.test(password),
+                /\p{Ll}/u.test(password),
+                /\d/u.test(password),
+                /[^\p{L}\p{N}\s]/u.test(password)
+            ];
+
+            const passed = checks.filter(Boolean).length;
+
+            if (passed === 5) {
+                feedback.textContent = "Strong password";
+                feedback.style.color = "green";
+            } else {
+                const missing = [];
+
+                if (password.length < 12) {
+                    missing.push("at least 12 characters");
+                }
+                if (!checks[1]) {
+                    missing.push("an uppercase letter");
+                }
+                if (!checks[2]) {
+                    missing.push("a lowercase letter");
+                }
+                if (!checks[3]) {
+                    missing.push("a number");
+                }
+                if (!checks[4]) {
+                    missing.push("a special character");
+                }
+
+                feedback.textContent = "Password needs: " + missing.join(", ") + ".";
+                feedback.style.color = "red";
+            }
+        };
+
+        passwordField.addEventListener("input", updateStrength);
+        updateStrength();
+    });
+};
+
+const initializeFormValidation = () => {
     const forms = document.querySelectorAll("form");
 
     forms.forEach((form) => {
-
         form.addEventListener("submit", (event) => {
-
             if (!validateRequiredFields(form)) {
                 event.preventDefault();
                 return;
             }
 
-            const email = form.querySelector(
-                'input[type="email"]'
-            );
+            const email = form.querySelector('input[type="email"]');
 
             if (email && !validateEmail(email)) {
                 showMessage("Please enter a valid email address.");
@@ -72,41 +142,49 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            const phone = form.querySelector(
-                'input[name="phone"]'
-            );
+            const phone = form.querySelector('input[name="phone"]');
 
-            if (phone && phone.value.trim() &&
-                !validatePhone(phone)) {
-
-                showMessage(
-                    "Please enter a valid phone number."
-                );
-
+            if (phone && phone.value.trim() && !validatePhone(phone)) {
+                showMessage("Please enter a valid phone number.");
                 phone.focus();
                 event.preventDefault();
                 return;
             }
 
-            const password =
-                document.getElementById("password");
+            const password = form.querySelector(
+                'input[name="password"], input[name="newPassword"]'
+            );
 
-            const confirmPassword =
-                document.getElementById("confirmPassword");
+            if (password && !isStrongPassword(password.value)) {
+                showMessage(
+                    "Password must contain at least 12 characters, one uppercase letter, one lowercase letter, one number, and one special character."
+                );
+                password.focus();
+                event.preventDefault();
+                return;
+            }
 
-            if (password && confirmPassword) {
+            const registrationPassword = form.querySelector("#password");
+            const confirmPassword = form.querySelector("#confirmPassword");
 
-                if (!validatePasswordMatch(
-                    "password",
-                    "confirmPassword")) {
-
+            if (registrationPassword && confirmPassword) {
+                if (!validatePasswordMatch("password", "confirmPassword")) {
                     event.preventDefault();
                     return;
                 }
             }
+
+            const newPassword = form.querySelector("#newPassword");
+            const confirmNewPassword = form.querySelector("#confirmNewPassword");
+
+            if (newPassword && confirmNewPassword) {
+                if (!validatePasswordMatch("newPassword", "confirmNewPassword")) {
+                    event.preventDefault();
+                }
+            }
         });
     });
-});
+};
 
 const initializeComplaintImageUpload = () => {
     const form = document.getElementById("complaintForm");
@@ -128,6 +206,7 @@ const initializeComplaintImageUpload = () => {
     }
 
     let cameraStream = null;
+    let previewObjectUrl = null;
 
     const stopCamera = () => {
         if (cameraStream) {
@@ -139,10 +218,19 @@ const initializeComplaintImageUpload = () => {
         cameraPanel.hidden = true;
     };
 
+    const clearPreview = () => {
+        imagePreview.hidden = true;
+        imagePreview.removeAttribute("src");
+
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+    };
+
     const showPreview = (file) => {
         if (!file) {
-            imagePreview.hidden = true;
-            imagePreview.removeAttribute("src");
+            clearPreview();
             return;
         }
 
@@ -151,25 +239,29 @@ const initializeComplaintImageUpload = () => {
 
         if (!file.type.startsWith("image/") ||
             !allowedExtensions.includes(extension)) {
-            imagePreview.hidden = true;
-            imagePreview.removeAttribute("src");
+            clearPreview();
             uploadError.textContent = "Please select a valid image file.";
             uploadError.hidden = false;
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            imagePreview.hidden = true;
-            imagePreview.removeAttribute("src");
+            clearPreview();
             uploadError.textContent = "Image size must be 5 MB or less.";
             uploadError.hidden = false;
             return;
         }
 
         uploadError.hidden = true;
-        imagePreview.src = URL.createObjectURL(file);
+        clearPreview();
+
+        previewObjectUrl = URL.createObjectURL(file);
+        imagePreview.src = previewObjectUrl;
         imagePreview.hidden = false;
-        imageFileNote.textContent = `Selected image: ${file.name}`;
+
+        if (imageFileNote) {
+            imageFileNote.textContent = `Selected image: ${file.name}`;
+        }
     };
 
     browserImage.addEventListener("change", () => {
@@ -187,12 +279,15 @@ const initializeComplaintImageUpload = () => {
     });
 
     openCameraBtn.addEventListener("click", async () => {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
             cameraImage.click();
             return;
         }
 
         try {
+            stopCamera();
+
             cameraStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: "environment" } },
                 audio: false
@@ -200,21 +295,37 @@ const initializeComplaintImageUpload = () => {
 
             cameraPreview.srcObject = cameraStream;
             cameraPanel.hidden = false;
+
+            try {
+                await cameraPreview.play();
+            } catch (error) {
+                showMessage("Camera opened. If the preview does not appear, try again.");
+            }
         } catch (error) {
+            stopCamera();
             cameraImage.click();
         }
     });
 
     capturePhotoBtn.addEventListener("click", () => {
-        if (!cameraStream) {
+        if (!cameraStream ||
+            !cameraPreview.videoWidth ||
+            !cameraPreview.videoHeight) {
+            showMessage("Camera is not ready. Please try again.");
             return;
         }
 
         const canvas = document.createElement("canvas");
-        canvas.width = cameraPreview.videoWidth || 1280;
-        canvas.height = cameraPreview.videoHeight || 720;
+        canvas.width = cameraPreview.videoWidth;
+        canvas.height = cameraPreview.videoHeight;
 
         const context = canvas.getContext("2d");
+
+        if (!context) {
+            showMessage("Unable to capture the photo. Please try again.");
+            return;
+        }
+
         context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
 
         canvas.toBlob((blob) => {
@@ -242,15 +353,17 @@ const initializeComplaintImageUpload = () => {
     closeCameraBtn.addEventListener("click", stopCamera);
 
     form.addEventListener("submit", (event) => {
-        const browserFile = browserImage.files[0];
-        const cameraFile = cameraImage.files[0];
-        const file = browserFile || cameraFile;
+        const file = browserImage.files[0] || cameraImage.files[0];
 
         if (!file) {
             event.preventDefault();
-            uploadError.textContent = "Please attach a complaint image before submitting.";
+            uploadError.textContent =
+                "Please attach a complaint image before submitting.";
             uploadError.hidden = false;
-            uploadError.scrollIntoView({ behavior: "smooth", block: "center" });
+            uploadError.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
             openCameraBtn.focus();
             stopCamera();
             return;
@@ -264,7 +377,10 @@ const initializeComplaintImageUpload = () => {
             event.preventDefault();
             uploadError.textContent = "Please upload a valid image file.";
             uploadError.hidden = false;
-            uploadError.scrollIntoView({ behavior: "smooth", block: "center" });
+            uploadError.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
             return;
         }
 
@@ -272,7 +388,10 @@ const initializeComplaintImageUpload = () => {
             event.preventDefault();
             uploadError.textContent = "Image size must be 5 MB or less.";
             uploadError.hidden = false;
-            uploadError.scrollIntoView({ behavior: "smooth", block: "center" });
+            uploadError.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
             return;
         }
 
@@ -281,26 +400,17 @@ const initializeComplaintImageUpload = () => {
     });
 
     window.addEventListener("beforeunload", stopCamera);
+    window.addEventListener("pagehide", stopCamera);
 };
 
-
-document.addEventListener("DOMContentLoaded", initializeComplaintImageUpload);
-
 document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("changePasswordForm");
-    const newPassword = document.getElementById("newPassword");
-    const confirmNewPassword =
-        document.getElementById("confirmNewPassword");
+    initializeFormValidation();
+    initializePasswordStrength();
+    initializeComplaintImageUpload();
+});
 
-    if (!form || !newPassword || !confirmNewPassword) {
-        return;
+window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+        window.location.reload();
     }
-
-    form.addEventListener("submit", (event) => {
-        if (newPassword.value !== confirmNewPassword.value) {
-            event.preventDefault();
-            showMessage("The new password and confirmation do not match.");
-            confirmNewPassword.focus();
-        }
-    });
 });
