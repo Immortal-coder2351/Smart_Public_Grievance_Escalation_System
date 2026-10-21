@@ -31,7 +31,7 @@ A Java Servlet/JSP and MySQL web application for reporting public-service issues
 
 ## Deploy with Docker
 
-The included `Dockerfile` builds the application from this repository root, compiles the Java sources, downloads MySQL Connector/J during the image build, and runs it on port `10000`. The image does not include uploaded complaint photos, compiled classes from your workstation, or local JAR files.
+The included `Dockerfile` builds the application from this repository root, downloads a checksum-verified MySQL Connector/J dependency, compiles the Java sources, and runs it on port `10000`. The image does not include uploaded complaint photos, compiled classes from your workstation, or local JAR files.
 
 1. Initialize a MySQL or MariaDB database using `database/grievance.sql`, and ensure the database is reachable from the container.
 2. Build the image from the repository root:
